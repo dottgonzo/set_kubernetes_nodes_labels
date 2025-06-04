@@ -1,2 +1,2 @@
 ---
-# vars file for ansible-role-install-ubuntu-k8s-binaries
+# vars file for set_kubernetes_nodes_labels
