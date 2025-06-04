@@ -1,0 +1,45 @@
+- name: Get nodes labels from kubernetes node JSON objects
+  ansible.builtin.command:
+    cmd: "kubectl get nodes -o json --kubeconfig={{ KUBECONFIG_DIR }}"
+  register: kubectl_get_nodes_json_output
+  changed_when: false
+  run_once: true
+  delegate_to: 127.0.0.1
+
+- name: "Ensure label '{{ label_key }}={{ label_value }}' on NODES_LIST"
+  ansible.builtin.command:
+    cmd: "kubectl label node {{ item.metadata.name }} {{ label_key }}={{ label_value }} --overwrite=true --kubeconfig={{ KUBECONFIG_DIR }}"
+  loop: "{{ (kubectl_get_nodes_json_output.stdout | from_json)['items'] }}" 
+  loop_control:
+    label: "{{ item.metadata.name }}"
+  vars:
+    _current_node_labels: "{{ item.metadata.labels | default({}) }}"
+    _node_hostname: "{{ _current_node_labels['kubernetes.io/hostname'] | default(item.metadata.name) }}"
+    _label_key_to_check: "{{ label_key }}"
+    _expected_label_value: "{{ label_value }}"
+    _has_label_key: "{{ _label_key_to_check in _current_node_labels }}"
+    _has_correct_label_value: "{{ _has_label_key and _current_node_labels[_label_key_to_check] == _expected_label_value }}"
+  when:
+    - _node_hostname in NODES_LIST
+  changed_when: "not _has_correct_label_value"
+  run_once: true
+  delegate_to: 127.0.0.1
+
+
+- name: "Ensure label '{{ label_key }}' is absent from nodes NOT listed in NODES_LIST"
+  ansible.builtin.command:
+    cmd: "kubectl label node {{ item.metadata.name }} {{ label_key }}- --overwrite=true --kubeconfig={{ KUBECONFIG_DIR }}"
+  loop: "{{ (kubectl_get_nodes_json_output.stdout | from_json)['items'] }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+  vars:
+    _current_node_labels: "{{ item.metadata.labels | default({}) }}"
+    _node_hostname: "{{ _current_node_labels['kubernetes.io/hostname'] | default(item.metadata.name) }}"
+    _label_key_to_check: "{{ label_key }}"
+    _has_label_key: "{{ _label_key_to_check in _current_node_labels }}"
+  when:
+    - _node_hostname not in NODES_LIST
+    - _has_label_key
+  changed_when: "_has_label_key"
+  run_once: true
+  delegate_to: 127.0.0.1
