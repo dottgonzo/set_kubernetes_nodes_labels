@@ -26,9 +26,9 @@
   delegate_to: 127.0.0.1
 
 
-- name: "Ensure label '{{ label_key }}' is absent from nodes NOT listed in NODES_LIST"
+- name: "Rimuovi l'etichetta '{{ label_key }}={{ label_value }}' on NODES_LIST"
   ansible.builtin.command:
-    cmd: "kubectl label node {{ item.metadata.name }} {{ label_key }}- --overwrite=true --kubeconfig={{ KUBECONFIG_DIR }}"
+    cmd: "kubectl label node {{ item.metadata.name }} {{ label_key }}- --overwrite=true --kubeconfig={{ inventory_dir }}/kubeconfigs/nodes.conf"
   loop: "{{ (kubectl_get_nodes_json_output.stdout | from_json)['items'] }}"
   loop_control:
     label: "{{ item.metadata.name }}"
@@ -36,10 +36,15 @@
     _current_node_labels: "{{ item.metadata.labels | default({}) }}"
     _node_hostname: "{{ _current_node_labels['kubernetes.io/hostname'] | default(item.metadata.name) }}"
     _label_key_to_check: "{{ label_key }}"
-    _has_label_key: "{{ _label_key_to_check in _current_node_labels }}"
+    _value_to_remove: "{{ label_value }}"
+    
+    # Controlla se l'etichetta esiste con il valore specifico che vogliamo rimuovere
+    label_has_value_to_remove: "{{ (_current_node_labels[_label_key_to_check] | default(None)) == _value_to_remove }}"
   when:
+    # Condizione 1: Il nodo NON deve essere nella lista dei nodi Postgres
     - _node_hostname not in NODES_LIST
-    - _has_label_key
-  changed_when: "_has_label_key"
+    # Condizione 2: L'etichetta deve esistere e avere esattamente il valore "yes"
+    - label_has_value_to_remove
+  changed_when: "label_has_value_to_remove"
   run_once: true
   delegate_to: 127.0.0.1
